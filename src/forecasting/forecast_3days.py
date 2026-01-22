@@ -2,11 +2,12 @@ import pandas as pd
 import joblib
 from pymongo import MongoClient
 from datetime import timedelta
+import os
 
 HOURS_AHEAD = 72
 
 def load_latest_features():
-    client = MongoClient("mongodb://localhost:27017/")
+    client = MongoClient(os.getenv("MONGO_URI"))
     col = client["Pearls_aqi_feature_store"]["karachi_air_qualityIndex"]
 
     df = pd.DataFrame(list(col.find({}, {"_id": 0})))
@@ -59,3 +60,4 @@ def forecast_3_days():
 if __name__ == "__main__":
     preds = forecast_3_days()
     print("✅ 3-Day AQI Forecast Generated")
+

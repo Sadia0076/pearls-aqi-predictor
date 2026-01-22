@@ -16,7 +16,7 @@ import shap
 # STEP 1 — Fetch Historical Data
 # -----------------------------
 def load_features():
-    client = MongoClient("mongodb://localhost:27017/")
+     client = MongoClient(os.getenv("MONGO_URI"))
     db = client["Pearls_aqi_feature_store"]
     col = db["karachi_air_qualityIndex"]
 
@@ -157,5 +157,6 @@ explainer = shap.TreeExplainer(best_model)
 shap_values = explainer.shap_values(X_test)
 
 shap.summary_plot(shap_values, X_test)
+
 
 

@@ -23,7 +23,7 @@ def load_features():
 
     client = MongoClient(mongo_uri)
     db = client["Pearls_aqi_feature_store"]
-    col = db["karachi_air_qualityIndex"]
+    col = db["karachi_air_quality_index"]
 
     df = pd.DataFrame(list(col.find({}, {"_id": 0})))
 
@@ -178,3 +178,4 @@ if __name__ == "__main__":
         # NOTE: SHAP plots may not render in GitHub Actions,
         # but this will NOT crash the pipeline
         shap.summary_plot(shap_values, X_test, show=False)
+

@@ -1,22 +1,27 @@
 # src/training_pipeline/train_model.py
 
+import os
+import joblib
+import shap
+import numpy as np
 import pandas as pd
+from datetime import datetime
 from pymongo import MongoClient
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-import numpy as np
-import joblib
-import os
-from datetime import datetime
-import shap
+
 
 # -----------------------------
-# STEP 1 — Fetch Historical Data
+# STEP 1 — Load Features
 # -----------------------------
 def load_features():
-     client = MongoClient(os.getenv("MONGO_URI"))
+    mongo_uri = os.getenv("MONGO_URI")
+    if not mongo_uri:
+        raise ValueError("MONGO_URI is not set")
+
+    client = MongoClient(mongo_uri)
     db = client["Pearls_aqi_feature_store"]
     col = db["karachi_air_qualityIndex"]
 
@@ -24,8 +29,6 @@ def load_features():
 
     df["timestamp"] = pd.to_datetime(
         df["timestamp"],
-        format="mixed",
-        dayfirst=True,
         errors="coerce"
     )
 
@@ -34,41 +37,37 @@ def load_features():
 
     return df
 
+
 # -----------------------------
-# STEP 2 — Separate Features & Target
+# STEP 2 — Prepare Training Data
 # -----------------------------
 def prepare_training_data():
     df = load_features()
 
-    TARGET = "pm25_next_hour"
+    target = "pm25_next_hour"
 
     X = df.drop(columns=[
         "timestamp",
         "location",
-        TARGET
+        target
     ])
 
-    y = df[TARGET]
+    y = df[target]
 
     return X, y
 
+
 # -----------------------------
-# STEP 4 — Model Registry
+# STEP 3 — Model Registry
 # -----------------------------
 def save_model_to_registry(model, model_name, metrics):
-    """
-    Saves model with versioning and logs metadata
-    """
     os.makedirs("models", exist_ok=True)
 
-    version = datetime.now().strftime("%Y%m%d_%H%M")
-    model_filename = f"aqi_model_{model_name}_{version}.pkl"
-    model_path = os.path.join("models", model_filename)
+    version = datetime.utcnow().strftime("%Y%m%d_%H%M")
+    model_path = f"models/aqi_model_{model_name}_{version}.pkl"
 
-    # Save model artifact
     joblib.dump(model, model_path)
 
-    # Create metadata entry
     metadata = {
         "model_name": model_name,
         "version": version,
@@ -92,24 +91,21 @@ def save_model_to_registry(model, model_name, metrics):
     registry_df.to_csv(registry_path, index=False)
 
     print(f"✅ Model saved: {model_path}")
-    print("📘 Registry updated")
+
 
 # -----------------------------
-# MAIN TRAINING PIPELINE
+# MAIN PIPELINE
 # -----------------------------
 if __name__ == "__main__":
-    # STEP 2 — Prepare data
     X, y = prepare_training_data()
 
-    # STEP 3 — Train/Test Split (time-series safe)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, shuffle=False
     )
 
-    # STEP 4 — Define models
     models = {
         "LinearRegression": LinearRegression(),
-        "RidgeRegression": Ridge(alpha=1.0),
+        "Ridge": Ridge(alpha=1.0),
         "RandomForest": RandomForestRegressor(
             n_estimators=200,
             max_depth=15,
@@ -121,12 +117,12 @@ if __name__ == "__main__":
         )
     }
 
-    # STEP 5 — Train & Evaluate
     results = {}
 
     for name, model in models.items():
         model.fit(X_train, y_train)
         preds = model.predict(X_test)
+
         results[name] = {
             "RMSE": np.sqrt(mean_squared_error(y_test, preds)),
             "MAE": mean_absolute_error(y_test, preds),
@@ -134,29 +130,19 @@ if __name__ == "__main__":
         }
 
     results_df = pd.DataFrame(results).T
-    print("\n📊 Model Evaluation Results:")
     print(results_df)
 
-    # STEP 6 — Select Best Model
     best_model_name = results_df["RMSE"].idxmin()
     best_model = models[best_model_name]
-    best_model_metrics = results[best_model_name]
 
-    print(f"\n Best model selected: {best_model_name}")
-
-    # STEP 7 — Save Best Model to Registry
     save_model_to_registry(
         model=best_model,
         model_name=best_model_name,
-        metrics=best_model_metrics
+        metrics=results[best_model_name]
     )
-     # -----------------------------
-# STEP 8 — SHAP Explainability
-# -----------------------------
-explainer = shap.TreeExplainer(best_model)
-shap_values = explainer.shap_values(X_test)
 
-shap.summary_plot(shap_values, X_test)
-
-
-
+    # SHAP (Tree models only)
+    if best_model_name in ["RandomForest", "GradientBoosting"]:
+        explainer = shap.TreeExplainer(best_model)
+        shap_values = explainer.shap_values(X_test)
+        shap.summary_plot(shap_values, X_test)

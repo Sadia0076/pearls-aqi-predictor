@@ -14,12 +14,12 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
 # -----------------------------
-# STEP 1 — Load Features
+# STEP 1 — Load Features (ROBUST)
 # -----------------------------
 def load_features():
     mongo_uri = os.getenv("MONGO_URI")
     if not mongo_uri:
-        raise ValueError("MONGO_URI is not set")
+        raise ValueError("❌ MONGO_URI is not set")
 
     client = MongoClient(mongo_uri)
     db = client["Pearls_aqi_feature_store"]
@@ -27,12 +27,28 @@ def load_features():
 
     df = pd.DataFrame(list(col.find({}, {"_id": 0})))
 
+    # ---- Defensive checks ----
+    if df.empty:
+        raise ValueError("❌ No data found in MongoDB collection")
+
+    if "timestamp" not in df.columns:
+        raise ValueError(
+            f"❌ 'timestamp' column missing. Found columns: {df.columns.tolist()}"
+        )
+
+    # ---- Correct timestamp parsing (YOUR FORMAT) ----
     df["timestamp"] = pd.to_datetime(
         df["timestamp"],
+        format="%d/%m/%Y %H:%M",  # <-- CRITICAL FIX
         errors="coerce"
     )
 
-    df = df.dropna()
+    # If parsing failed completely
+    if df["timestamp"].isna().all():
+        raise ValueError("❌ Timestamp parsing failed for all rows")
+
+    # Clean + sort
+    df = df.dropna(subset=["timestamp"]).reset_index(drop=True)
     df = df.sort_values("timestamp")
 
     return df
@@ -46,13 +62,20 @@ def prepare_training_data():
 
     target = "pm25_next_hour"
 
-    X = df.drop(columns=[
-        "timestamp",
-        "location",
-        target
-    ])
+    if target not in df.columns:
+        raise ValueError(
+            f"❌ Target column '{target}' not found. Available columns: {df.columns.tolist()}"
+        )
+
+    X = df.drop(
+        columns=["timestamp", "location", target],
+        errors="ignore"
+    )
 
     y = df[target]
+
+    if X.empty:
+        raise ValueError("❌ Feature matrix X is empty after preprocessing")
 
     return X, y
 
@@ -97,8 +120,11 @@ def save_model_to_registry(model, model_name, metrics):
 # MAIN PIPELINE
 # -----------------------------
 if __name__ == "__main__":
+
+    # ---- Load data ----
     X, y = prepare_training_data()
 
+    # ---- Train/Test split (time-aware) ----
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, shuffle=False
     )
@@ -113,7 +139,8 @@ if __name__ == "__main__":
         ),
         "GradientBoosting": GradientBoostingRegressor(
             n_estimators=200,
-            learning_rate=0.05
+            learning_rate=0.05,
+            random_state=42
         )
     }
 
@@ -130,8 +157,10 @@ if __name__ == "__main__":
         }
 
     results_df = pd.DataFrame(results).T
+    print("\n📊 Model Performance:\n")
     print(results_df)
 
+    # ---- Select best model ----
     best_model_name = results_df["RMSE"].idxmin()
     best_model = models[best_model_name]
 
@@ -141,8 +170,11 @@ if __name__ == "__main__":
         metrics=results[best_model_name]
     )
 
-    # SHAP (Tree models only)
+    # ---- SHAP (Tree models only) ----
     if best_model_name in ["RandomForest", "GradientBoosting"]:
         explainer = shap.TreeExplainer(best_model)
         shap_values = explainer.shap_values(X_test)
-        shap.summary_plot(shap_values, X_test)
+
+        # NOTE: SHAP plots may not render in GitHub Actions,
+        # but this will NOT crash the pipeline
+        shap.summary_plot(shap_values, X_test, show=False)

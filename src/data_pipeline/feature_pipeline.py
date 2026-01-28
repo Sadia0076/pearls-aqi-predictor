@@ -3,6 +3,9 @@ from datetime import datetime, timedelta
 from fetch_data import fetch_air_quality_data
 from clean_transform import transform_features
 from upload_to_mongodb import upload_features
+import sys
+import os
+sys.path.append(os.getcwd())
 
 def run_hourly_pipeline():
     end_time = datetime.utcnow()
@@ -26,3 +29,4 @@ def run_hourly_pipeline():
 
 if __name__ == "__main__":
     run_hourly_pipeline()
+

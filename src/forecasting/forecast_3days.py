@@ -16,13 +16,20 @@ def load_latest_features():
 
     return df.iloc[-1:].copy()
 
+##change this part in github 
 def load_latest_model():
-    registry = pd.read_csv("models/model_registry.csv")
-    latest = registry.sort_values("saved_at").iloc[-1]
+    client = MongoClient(os.getenv("MONGO_URI"))
+    col = client["Pearls_aqi_model_registry"]["models"]
 
-    model_path = f"models/aqi_model_{latest['model_name']}_{latest['version']}.pkl"
-    return joblib.load(model_path)
+    latest = col.find_one(
+        sort=[("created_at", -1)]
+    )
 
+    if not latest:
+        raise ValueError("❌ No model found in registry")
+
+    return joblib.load(latest["artifact_path"])
+# till 
 def forecast_3_days():
     model = load_latest_model()
     current = load_latest_features()
@@ -60,4 +67,5 @@ def forecast_3_days():
 if __name__ == "__main__":
     preds = forecast_3_days()
     print("✅ 3-Day AQI Forecast Generated")
+
 

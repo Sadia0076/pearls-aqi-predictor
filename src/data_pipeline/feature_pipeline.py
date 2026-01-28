@@ -1,8 +1,8 @@
 #This does ONLY last-hour data. NO backfill loop
 from datetime import datetime, timedelta
-from src.data_pipeline.fetch_data import fetch_air_quality_data
-from src.data_pipeline.clean_transform import transform_features
-from src.data_pipeline.upload_to_mongodb import upload_features
+from fetch_data import fetch_air_quality_data
+from clean_transform import transform_features
+from upload_to_mongodb import upload_features
 import sys
 import os
 sys.path.append(os.getcwd())
@@ -29,5 +29,6 @@ def run_hourly_pipeline():
 
 if __name__ == "__main__":
     run_hourly_pipeline()
+
 
 

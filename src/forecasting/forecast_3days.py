@@ -8,7 +8,7 @@ HOURS_AHEAD = 72
 
 def load_latest_features():
     client = MongoClient(os.getenv("MONGO_URI"))
-    col = client["Pearls_aqi_feature_store"]["karachi_air_qualityIndex"]
+    col = client["Pearls_aqi_feature_store"]["karachi_air_quality_index"]
 
     df = pd.DataFrame(list(col.find({}, {"_id": 0})))
     df["timestamp"] = pd.to_datetime(df["timestamp"])
@@ -67,5 +67,6 @@ def forecast_3_days():
 if __name__ == "__main__":
     preds = forecast_3_days()
     print("✅ 3-Day AQI Forecast Generated")
+
 
 

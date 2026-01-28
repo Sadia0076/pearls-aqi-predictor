@@ -1,7 +1,7 @@
 # src/data_pipeline/backfill.py
-from fetch_data import fetch_air_quality_data
-from clean_transform import transform_features
-from upload_to_mongodb import upload_features
+from src.data_pipeline.fetch_data import fetch_air_quality_data
+from src.data_pipeline.clean_transform import transform_features
+from src.data_pipeline.upload_to_mongodb import upload_features
 
 # Example: backfill by weekly ranges
 date_ranges = [
@@ -23,3 +23,4 @@ for start, end in date_ranges:
     upload_features(features_df)
 
 print("✅ Backfill completed!")
+

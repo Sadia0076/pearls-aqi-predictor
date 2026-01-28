@@ -84,36 +84,42 @@ def prepare_training_data():
 # STEP 3 — Model Registry
 # -----------------------------
 def save_model_to_registry(model, model_name, metrics):
+    mongo_uri = os.getenv("MONGO_URI")
+    if not mongo_uri:
+        raise ValueError("❌ MONGO_URI not set")
+
+    # Connect to MongoDB
+    client = MongoClient(mongo_uri)
+    registry_db = client["Pearls_aqi_model_registry"]
+    registry_col = registry_db["models"]
+
+    # Ensure artifact folder exists
     os.makedirs("models", exist_ok=True)
 
+    # Versioning
     version = datetime.utcnow().strftime("%Y%m%d_%H%M")
-    model_path = f"models/aqi_model_{model_name}_{version}.pkl"
+    model_filename = f"aqi_model_{model_name}_{version}.pkl"
+    model_path = f"models/{model_filename}"
 
+    # Save model artifact
     joblib.dump(model, model_path)
 
+    # Prepare registry metadata
     metadata = {
         "model_name": model_name,
         "version": version,
-        "rmse": metrics["RMSE"],
-        "mae": metrics["MAE"],
-        "r2": metrics["R2"],
-        "saved_at": version
+        "metrics": metrics,
+        "artifact_path": model_path,
+        "feature_columns": list(model.feature_names_in_)
+        if hasattr(model, "feature_names_in_") else None,
+        "created_at": datetime.utcnow()
     }
 
-    registry_path = "models/model_registry.csv"
+    # Insert into MongoDB registry
+    registry_col.insert_one(metadata)
 
-    if os.path.exists(registry_path):
-        registry_df = pd.read_csv(registry_path)
-        registry_df = pd.concat(
-            [registry_df, pd.DataFrame([metadata])],
-            ignore_index=True
-        )
-    else:
-        registry_df = pd.DataFrame([metadata])
-
-    registry_df.to_csv(registry_path, index=False)
-
-    print(f"✅ Model saved: {model_path}")
+    print("✅ Model registered in MongoDB")
+    print(f"📦 Artifact saved at {model_path}")
 
 
 # -----------------------------
@@ -178,4 +184,5 @@ if __name__ == "__main__":
         # NOTE: SHAP plots may not render in GitHub Actions,
         # but this will NOT crash the pipeline
         shap.summary_plot(shap_values, X_test, show=False)
+
 
